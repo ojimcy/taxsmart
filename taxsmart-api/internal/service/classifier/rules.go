@@ -2,6 +2,7 @@ package classifier
 
 import (
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/taxsmart/taxsmart-api/internal/model"
@@ -75,16 +76,28 @@ func NewRuleEngine() *RuleEngine {
 	}
 }
 
+// sortedPatterns returns patterns sorted by length (longest first) for deterministic matching
+func sortedPatterns(patterns map[string]model.Category) []string {
+	keys := make([]string, 0, len(patterns))
+	for k := range patterns {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return len(keys[i]) > len(keys[j])
+	})
+	return keys
+}
+
 // Classify attempts to classify a transaction based on its description
 func (r *RuleEngine) Classify(description string, txType string) model.ClassificationResult {
 	upperDesc := strings.ToUpper(description)
 
-	// Check income patterns for credits
+	// Check income patterns for credits (longest patterns first to avoid partial matches)
 	if txType == "credit" {
-		for pattern, category := range r.incomePatterns {
+		for _, pattern := range sortedPatterns(r.incomePatterns) {
 			if strings.Contains(upperDesc, pattern) {
 				return model.ClassificationResult{
-					Category:   category,
+					Category:   r.incomePatterns[pattern],
 					Confidence: 0.85,
 					Method:     "rules",
 				}
@@ -92,12 +105,12 @@ func (r *RuleEngine) Classify(description string, txType string) model.Classific
 		}
 	}
 
-	// Check expense patterns for debits
+	// Check expense patterns for debits (longest patterns first)
 	if txType == "debit" {
-		for pattern, category := range r.expensePatterns {
+		for _, pattern := range sortedPatterns(r.expensePatterns) {
 			if strings.Contains(upperDesc, pattern) {
 				return model.ClassificationResult{
-					Category:   category,
+					Category:   r.expensePatterns[pattern],
 					Confidence: 0.85,
 					Method:     "rules",
 				}
